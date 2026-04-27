@@ -1,96 +1,73 @@
 import streamlit as st
-import pandas as pd
-from bs4 import BeautifulSoup
+import openpyxl
+import xml.etree.ElementTree as ET
+import csv
+import re
+from io import StringIO
 
 # --- Page Config ---
-st.set_page_config(page_title="LQA Dashboard", page_icon="🌍", layout="wide")
+st.set_page_config(page_title="Missing Strings Report", page_icon="🔍")
+st.title("🔍 Missing Strings Report Generator")
 
-st.title("🌍 Localization Quality Manager Dashboard")
-st.markdown("Upload your FanPolls CSV or MXLIFF files to review content and run automated QA checks.")
+# --- File Uploaders (Replicating Tkinter Steps 1 & 2) ---
+st.markdown("### Step 1: Upload Source XLSX")
+xlsx_file = st.file_uploader("Select Source XLSX File", type=['xlsx'])
 
-# --- File Uploader ---
-uploaded_file = st.file_uploader("Upload a CSV or MXLIFF file", type=['csv', 'mxliff'])
+st.markdown("### Step 2: Upload Processed MXLIFF")
+mxliff_file = st.file_uploader("Select Processed MXLIFF File", type=['mxliff'])
 
-if uploaded_file is not None:
-    
-    # ---------------------------------------------------------
-    # CSV HANDLING LOGIC
-    # ---------------------------------------------------------
-    if uploaded_file.name.endswith('.csv'):
-        st.subheader(f"Data Preview: {uploaded_file.name}")
-        
-        # Read the CSV
-        df = pd.read_csv(uploaded_file)
-        st.dataframe(df, use_container_width=True)
-        
-        st.divider()
-        st.subheader("🛠️ Quick QA Checks")
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            if st.button("Run Character Limit Check"):
-                # Example QA: Check if 'question_text' exceeds 100 characters
-                if 'question_text' in df.columns:
-                    df['Too Long'] = df['question_text'].str.len() > 100
-                    issues = df[df['Too Long'] == True]
-                    if not issues.empty:
-                        st.warning(f"Found {len(issues)} questions over 100 characters!")
-                        st.dataframe(issues[['artist_name', 'question_text', 'Too Long']])
-                    else:
-                        st.success("All questions pass the character limit check!")
+if xlsx_file and mxliff_file:
+    if st.button("Generate Report"):
+        with st.spinner("Processing files..."):
+            try:
+                # Load the files directly from the Streamlit uploaders
+                wb = openpyxl.load_workbook(xlsx_file, data_only=True)
+                tree = ET.parse(mxliff_file)
+                root = tree.getroot()
+                
+                missing_items = []
+
+                # =========================================================
+                # ⬇️ PASTE YOUR CORE LOGIC HERE ⬇️
+                # (The part from your original script that parses the namespaces, 
+                # iterates through the MXLIFF groups, and compares to the worksheet cells)
+                # =========================================================
+                
+                # Example starting point from your original code:
+                # ns = {'xlf': 'urn:oasis:names:tc:xliff:document:1.2', ...}
+                # ...
+                # for group in root.findall('.//xlf:group', namespaces=ns):
+                # ...
+                #                         cleaned_leftover = re.sub(r'[\s\W_]+', '', remaining_text)
+                #                         if len(cleaned_leftover) > 0:
+                #                             missing_items.append({
+                #                                 'Cell': f"{col_letter}{row}",
+                #                                 'Source Text': cell_text
+                #                             })
+                
+                # =========================================================
+                # ⬆️ END OF YOUR CORE LOGIC ⬆️
+                # =========================================================
+
+                # --- Handle the CSV Output (Replicating Tkinter Step 3) ---
+                if not missing_items:
+                    st.success("No hidden or missing strings found!")
                 else:
-                    st.error("Column 'question_text' not found in this CSV.")
+                    # Instead of saving locally, we write to a memory buffer for web download
+                    csv_buffer = StringIO()
+                    writer = csv.DictWriter(csv_buffer, fieldnames=['Cell', 'Source Text'])
+                    writer.writeheader()
+                    writer.writerows(missing_items)
                     
-        with col2:
-            if st.button("Check Missing Locales"):
-                # Example QA: Check for empty locales
-                if 'locale' in df.columns:
-                    missing = df[df['locale'].isna()]
-                    if not missing.empty:
-                        st.warning(f"Found {len(missing)} rows with missing locales!")
-                        st.dataframe(missing)
-                    else:
-                        st.success("No missing locales found!")
-                else:
-                    st.error("Column 'locale' not found in this CSV.")
+                    st.success(f"Report generated successfully! Found {len(missing_items)} hidden strings.")
+                    
+                    # Streamlit download button
+                    st.download_button(
+                        label="Download CSV Report",
+                        data=csv_buffer.getvalue(),
+                        file_name="missing_strings_report.csv",
+                        mime="text/csv"
+                    )
 
-    # ---------------------------------------------------------
-    # MXLIFF HANDLING LOGIC
-    # ---------------------------------------------------------
-    elif uploaded_file.name.endswith('.mxliff'):
-        st.subheader(f"Translation Preview: {uploaded_file.name}")
-        
-        # Parse the XML/MXLIFF file
-        content = uploaded_file.getvalue().decode("utf-8")
-        soup = BeautifulSoup(content, 'lxml-xml')
-        
-        # Extract translation units
-        trans_units = soup.find_all('trans-unit')
-        
-        mxliff_data = []
-        for tu in trans_units:
-            source_text = tu.find('source').text if tu.find('source') else ""
-            target_text = tu.find('target').text if tu.find('target') else ""
-            status = tu.get('m:confirmed', '0') # Checks Memsource confirmation status
-            
-            mxliff_data.append({
-                "Source (English)": source_text,
-                "Target (Translation)": target_text,
-                "Confirmed": "✅ Yes" if status == '1' else "⚠️ No"
-            })
-            
-        mxliff_df = pd.DataFrame(mxliff_data)
-        st.dataframe(mxliff_df, use_container_width=True)
-        
-        st.divider()
-        st.subheader("🛠️ MXLIFF QA Checks")
-        
-        if st.button("Find Missing Translations"):
-            # Check for empty target segments
-            missing_translations = mxliff_df[mxliff_df["Target (Translation)"] == ""]
-            if not missing_translations.empty:
-                st.error(f"Found {len(missing_translations)} missing translations!")
-                st.dataframe(missing_translations)
-            else:
-                st.success("All segments have target text!")
+            except Exception as e:
+                st.error(f"An error occurred during processing:\n{e}")
