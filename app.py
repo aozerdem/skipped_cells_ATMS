@@ -3,13 +3,13 @@ import openpyxl
 import xml.etree.ElementTree as ET
 import csv
 import re
-from io import StringIO
+from io import StringIO, BytesIO  # <-- Added BytesIO here
 
 # --- Page Config ---
 st.set_page_config(page_title="Missing Strings Report", page_icon="🔍")
 st.title("🔍 Missing Strings Report Generator")
 
-# --- File Uploaders (Replicating Tkinter Steps 1 & 2) ---
+# --- File Uploaders ---
 st.markdown("### Step 1: Upload Source XLSX")
 xlsx_file = st.file_uploader("Select Source XLSX File", type=['xlsx'])
 
@@ -20,40 +20,32 @@ if xlsx_file and mxliff_file:
     if st.button("Generate Report"):
         with st.spinner("Processing files..."):
             try:
-                # Load the files directly from the Streamlit uploaders
-                wb = openpyxl.load_workbook(xlsx_file, data_only=True)
-                tree = ET.parse(mxliff_file)
+                # THE FIX: Read Streamlit's stream into a standard Python byte buffer
+                xlsx_buffer = BytesIO(xlsx_file.read())
+                mxliff_buffer = BytesIO(mxliff_file.read())
+
+                # Load the files from the pure byte buffers
+                wb = openpyxl.load_workbook(xlsx_buffer, data_only=True)
+                tree = ET.parse(mxliff_buffer)
                 root = tree.getroot()
                 
                 missing_items = []
 
                 # =========================================================
-                # ⬇️ PASTE YOUR CORE LOGIC HERE ⬇️
-                # (The part from your original script that parses the namespaces, 
-                # iterates through the MXLIFF groups, and compares to the worksheet cells)
+                # ⬇️ PASTE YOUR EXACT CORE LOGIC HERE ⬇️
+                # (No changes needed to your original regex or matching loops)
                 # =========================================================
                 
-                # Example starting point from your original code:
-                # ns = {'xlf': 'urn:oasis:names:tc:xliff:document:1.2', ...}
-                # ...
-                # for group in root.findall('.//xlf:group', namespaces=ns):
-                # ...
-                #                         cleaned_leftover = re.sub(r'[\s\W_]+', '', remaining_text)
-                #                         if len(cleaned_leftover) > 0:
-                #                             missing_items.append({
-                #                                 'Cell': f"{col_letter}{row}",
-                #                                 'Source Text': cell_text
-                #                             })
+                
                 
                 # =========================================================
                 # ⬆️ END OF YOUR CORE LOGIC ⬆️
                 # =========================================================
 
-                # --- Handle the CSV Output (Replicating Tkinter Step 3) ---
+                # --- Handle the CSV Output ---
                 if not missing_items:
                     st.success("No hidden or missing strings found!")
                 else:
-                    # Instead of saving locally, we write to a memory buffer for web download
                     csv_buffer = StringIO()
                     writer = csv.DictWriter(csv_buffer, fieldnames=['Cell', 'Source Text'])
                     writer.writeheader()
@@ -61,7 +53,6 @@ if xlsx_file and mxliff_file:
                     
                     st.success(f"Report generated successfully! Found {len(missing_items)} hidden strings.")
                     
-                    # Streamlit download button
                     st.download_button(
                         label="Download CSV Report",
                         data=csv_buffer.getvalue(),
