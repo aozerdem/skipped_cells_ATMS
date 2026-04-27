@@ -3,7 +3,9 @@ import openpyxl
 import xml.etree.ElementTree as ET
 import csv
 import re
-from io import StringIO, BytesIO  # <-- Added BytesIO here
+import tempfile
+import os
+from io import StringIO
 
 # --- Page Config ---
 st.set_page_config(page_title="Missing Strings Report", page_icon="🔍")
@@ -19,21 +21,27 @@ mxliff_file = st.file_uploader("Select Processed MXLIFF File", type=['mxliff'])
 if xlsx_file and mxliff_file:
     if st.button("Generate Report"):
         with st.spinner("Processing files..."):
-            try:
-                # THE FIX: Read Streamlit's stream into a standard Python byte buffer
-                xlsx_buffer = BytesIO(xlsx_file.read())
-                mxliff_buffer = BytesIO(mxliff_file.read())
+            
+            # 1. Create temporary physical files on the server
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp_xlsx:
+                tmp_xlsx.write(xlsx_file.getvalue())
+                xlsx_path = tmp_xlsx.name
+                
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".mxliff") as tmp_mxliff:
+                tmp_mxliff.write(mxliff_file.getvalue())
+                mxliff_path = tmp_mxliff.name
 
-                # Load the files from the pure byte buffers
-                wb = openpyxl.load_workbook(xlsx_buffer, data_only=True)
-                tree = ET.parse(mxliff_buffer)
+            try:
+                # 2. Pass the physical file paths exactly like your offline script does
+                wb = openpyxl.load_workbook(xlsx_path, data_only=True)
+                tree = ET.parse(mxliff_path)
                 root = tree.getroot()
                 
                 missing_items = []
 
                 # =========================================================
                 # ⬇️ PASTE YOUR EXACT CORE LOGIC HERE ⬇️
-                # (No changes needed to your original regex or matching loops)
+                # (Start from where you define your namespaces/dictionaries)
                 # =========================================================
                 
                 
@@ -62,3 +70,10 @@ if xlsx_file and mxliff_file:
 
             except Exception as e:
                 st.error(f"An error occurred during processing:\n{e}")
+                
+            finally:
+                # 3. Clean up the temporary files from the server
+                if os.path.exists(xlsx_path):
+                    os.remove(xlsx_path)
+                if os.path.exists(mxliff_path):
+                    os.remove(mxliff_path)
