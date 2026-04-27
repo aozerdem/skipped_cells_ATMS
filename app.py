@@ -33,7 +33,7 @@ if xlsx_file and mxliff_file:
 
             try:
                 # ==========================================================
-                # CORE LOGIC (Copied EXACTLY from your provided script)
+                # CORE LOGIC 
                 # ==========================================================
                 
                 # Parse the MXLIFF and extract all source strings
@@ -88,23 +88,32 @@ if xlsx_file and mxliff_file:
                                         })
 
                 # ==========================================================
-                # CSV OUTPUT & DOWNLOAD LOGIC
+                # CSV OUTPUT, PREVIEW & DOWNLOAD LOGIC
                 # ==========================================================
                 if not missing_items:
-                    st.success("No hidden or missing strings found!")
+                    st.success("✅ No hidden or missing strings found! Everything looks good.")
                 else:
+                    st.warning(f"⚠️ Found {len(missing_items)} hidden strings.")
+                    
+                    # --- NEW: UI Preview ---
+                    st.markdown("### Missing Cells Preview")
+                    st.dataframe(missing_items, use_container_width=True)
+                    
+                    # --- NEW: Dynamic File Naming ---
+                    # Strip the .xlsx extension and take the first 15 characters
+                    base_name = xlsx_file.name.replace('.xlsx', '')[:15]
+                    dynamic_filename = f"missing_cells_{base_name}.csv"
+                    
                     # Write results to a memory buffer for the download button
                     csv_buffer = StringIO()
                     writer = csv.DictWriter(csv_buffer, fieldnames=['Cell', 'Source Text'])
                     writer.writeheader()
                     writer.writerows(missing_items)
                     
-                    st.success(f"Report generated successfully! Found {len(missing_items)} hidden strings.")
-                    
                     st.download_button(
-                        label="Download CSV Report",
+                        label="⬇️ Download CSV Report",
                         data=csv_buffer.getvalue(),
-                        file_name="missing_strings_report.csv",
+                        file_name=dynamic_filename,
                         mime="text/csv"
                     )
 
