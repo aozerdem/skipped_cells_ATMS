@@ -9,6 +9,17 @@ from io import StringIO
 
 # --- UI Setup ---
 st.set_page_config(page_title="Missing Strings Report", page_icon="🔍")
+
+# --- Developer Credit (Top Right) ---
+st.markdown(
+    """
+    <div style='text-align: right; color: gray; font-size: 14px; margin-bottom: -20px;'>
+        <i>developed by Ahmet Ozerdem</i>
+    </div>
+    """, 
+    unsafe_allow_html=True
+)
+
 st.title("🔍 Missing Strings Report Generator")
 
 # --- File Uploaders ---
@@ -22,7 +33,6 @@ if xlsx_file and mxliff_file:
     if st.button("Generate Report"):
         with st.spinner("Processing files..."):
             
-            # 1. Create temporary physical files so openpyxl behaves exactly like the offline script
             with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp_xlsx:
                 tmp_xlsx.write(xlsx_file.getvalue())
                 xlsx_path = tmp_xlsx.name
@@ -33,24 +43,20 @@ if xlsx_file and mxliff_file:
 
             try:
                 # ==========================================================
-                # CORE LOGIC 
+                # CORE LOGIC: THE CONSUMPTION MODEL
                 # ==========================================================
                 
-                # Parse the MXLIFF and extract all source strings
+                # Parse the MXLIFF and extract all source strings into a LIST
                 tree = ET.parse(mxliff_path)
                 root = tree.getroot()
                 
-                # ATMS MXLIFFs use the standard XLIFF 1.2 namespace
                 ns = {'xliff': 'urn:oasis:names:tc:xliff:document:1.2'}
                 
-                mxliff_sources = set()
+                mxliff_sources = [] # CHANGED from set() to list()
                 for source_node in root.findall('.//xliff:source', ns):
                     text = "".join(source_node.itertext()).strip() 
                     if text:
-                        mxliff_sources.add(text)
-
-                # Sort MXLIFF sources by length (longest first) to ensure safe subtraction
-                sorted_sources = sorted(mxliff_sources, key=len, reverse=True)
+                        mxliff_sources.append(text)
 
                 # Parse the source XLSX file
                 wb = openpyxl.load_workbook(xlsx_path, data_only=True)
@@ -59,7 +65,7 @@ if xlsx_file and mxliff_file:
                 missing_items = []
                 target_columns = ['F', 'G', 'H', 'I', 'J', 'K']
                 
-                # Iterate through the designated range (Row 2 onwards, Cols F-K)
+                # Iterate through the designated range
                 for row in range(2, sheet.max_row + 1):
                     for col_index, col_letter in enumerate(target_columns, start=6):
                         cell = sheet.cell(row=row, column=col_index)
@@ -68,24 +74,41 @@ if xlsx_file and mxliff_file:
                             cell_text = str(cell.value).strip()
                             
                             if cell_text: 
-                                # First check: Is the exact full string in the MXLIFF?
-                                if cell_text not in mxliff_sources:
+                                # 1. Exact Match Check: Is it in our available pool?
+                                if cell_text in mxliff_sources:
+                                    mxliff_sources.remove(cell_text) # Consume it!
                                     
-                                    # WORKAROUND: Check if the string was segmented by punctuation
+                                else:
+                                    # 2. Segmented Check: Can we build it from available segments?
                                     remaining_text = cell_text
-                                    for src in sorted_sources:
-                                        if src in remaining_text:
-                                            remaining_text = remaining_text.replace(src, '')
+                                    segments_to_remove = []
                                     
-                                    # Remove all whitespace, punctuation, and special symbols from leftovers
+                                    # Sort CURRENTLY available sources by length (longest first)
+                                    current_sorted_sources = sorted(mxliff_sources, key=len, reverse=True)
+                                    
+                                    for src in current_sorted_sources:
+                                        if src in remaining_text:
+                                            # Replace only 1 instance to respect exact counts
+                                            remaining_text = remaining_text.replace(src, '', 1)
+                                            segments_to_remove.append(src)
+                                            
+                                            # Optimization: Stop checking if we've consumed all text
+                                            if len(re.sub(r'[\s\W_]+', '', remaining_text)) == 0:
+                                                break
+                                    
                                     cleaned_leftover = re.sub(r'[\s\W_]+', '', remaining_text)
                                     
-                                    # If there are still letters/numbers left, it wasn't just segmented—it's hidden!
+                                    # If letters/numbers are still left, it's missing!
                                     if len(cleaned_leftover) > 0:
                                         missing_items.append({
                                             'Cell': f"{col_letter}{row}",
                                             'Source Text': cell_text
                                         })
+                                    else:
+                                        # It was perfectly matched via segments! Consume those segments from the pool.
+                                        for src in segments_to_remove:
+                                            if src in mxliff_sources:
+                                                mxliff_sources.remove(src)
 
                 # ==========================================================
                 # CSV OUTPUT, PREVIEW & DOWNLOAD LOGIC
@@ -95,16 +118,12 @@ if xlsx_file and mxliff_file:
                 else:
                     st.warning(f"⚠️ Found {len(missing_items)} hidden strings.")
                     
-                    # --- NEW: UI Preview ---
                     st.markdown("### Missing Cells Preview")
                     st.dataframe(missing_items, use_container_width=True)
                     
-                    # --- NEW: Dynamic File Naming ---
-                    # Strip the .xlsx extension and take the first 15 characters
                     base_name = xlsx_file.name.replace('.xlsx', '')[:15]
                     dynamic_filename = f"missing_cells_{base_name}.csv"
                     
-                    # Write results to a memory buffer for the download button
                     csv_buffer = StringIO()
                     writer = csv.DictWriter(csv_buffer, fieldnames=['Cell', 'Source Text'])
                     writer.writeheader()
@@ -121,7 +140,6 @@ if xlsx_file and mxliff_file:
                 st.error(f"An error occurred during processing:\n{e}")
                 
             finally:
-                # Clean up the temporary files from the Streamlit server
                 if os.path.exists(xlsx_path):
                     os.remove(xlsx_path)
                 if os.path.exists(mxliff_path):
