@@ -14,7 +14,7 @@ st.set_page_config(page_title="Missing Strings Report", page_icon="🔍")
 st.markdown(
     """
     <div style='text-align: right; color: gray; font-size: 14px; margin-bottom: -20px;'>
-        <i>please contact Ahmet Ozerdem if you have any issues with the tool</i>
+        <i>ao</i>
     </div>
     """, 
     unsafe_allow_html=True
