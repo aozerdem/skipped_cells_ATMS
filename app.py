@@ -5,12 +5,12 @@ import csv
 import re
 import tempfile
 import os
+import uuid
 from io import StringIO
 
 # --- UI Setup ---
 st.set_page_config(page_title="Missing Strings Report", page_icon="🔍")
 
-# --- Developer Credit (Top Right) ---
 st.markdown(
     """
     <div style='text-align: right; color: gray; font-size: 14px; margin-bottom: -20px;'>
@@ -43,20 +43,42 @@ if xlsx_file and mxliff_file:
 
             try:
                 # ==========================================================
-                # CORE LOGIC: THE CONSUMPTION MODEL
+                # CORE LOGIC: NATIVE PARAGRAPH RECONSTRUCTION
                 # ==========================================================
                 
-                # Parse the MXLIFF and extract all source strings into a LIST
                 tree = ET.parse(mxliff_path)
                 root = tree.getroot()
                 
-                ns = {'xliff': 'urn:oasis:names:tc:xliff:document:1.2'}
+                para_blocks = {}
                 
-                mxliff_sources = [] # CHANGED from set() to list()
-                for source_node in root.findall('.//xliff:source', ns):
-                    text = "".join(source_node.itertext()).strip() 
-                    if text:
-                        mxliff_sources.append(text)
+                # 1. Group all MXLIFF segments by their native Memsource Paragraph ID
+                for tu in root.iter('{urn:oasis:names:tc:xliff:document:1.2}trans-unit'):
+                    para_id = None
+                    # Safely find the para-id ignoring strict namespace mapping
+                    for key, val in tu.attrib.items():
+                        if key.endswith('para-id'):
+                            para_id = val
+                            break
+                            
+                    # If no para-id exists, assign a unique one so it doesn't falsely merge
+                    if not para_id:
+                        para_id = str(uuid.uuid4())
+                        
+                    source_node = tu.find('{urn:oasis:names:tc:xliff:document:1.2}source')
+                    if source_node is not None:
+                        text = "".join(source_node.itertext())
+                        if para_id not in para_blocks:
+                            para_blocks[para_id] = []
+                        para_blocks[para_id].append(text)
+
+                # 2. Compile the MXLIFF pool by joining segments of the same paragraph 
+                #    and stripping all whitespace/punctuation for a bulletproof comparison.
+                cleaned_mxliff_pool = []
+                for pid, texts in para_blocks.items():
+                    combined_text = "".join(texts)
+                    cleaned = re.sub(r'[\s\W_]+', '', combined_text)
+                    if cleaned:
+                        cleaned_mxliff_pool.append(cleaned)
 
                 # Parse the source XLSX file
                 wb = openpyxl.load_workbook(xlsx_path, data_only=True)
@@ -65,7 +87,7 @@ if xlsx_file and mxliff_file:
                 missing_items = []
                 target_columns = ['F', 'G', 'H', 'I', 'J', 'K']
                 
-                # Iterate through the designated range
+                # 3. Iterate through Excel and verify against the reconstructed pool
                 for row in range(2, sheet.max_row + 1):
                     for col_index, col_letter in enumerate(target_columns, start=6):
                         cell = sheet.cell(row=row, column=col_index)
@@ -74,41 +96,21 @@ if xlsx_file and mxliff_file:
                             cell_text = str(cell.value).strip()
                             
                             if cell_text: 
-                                # 1. Exact Match Check: Is it in our available pool?
-                                if cell_text in mxliff_sources:
-                                    mxliff_sources.remove(cell_text) # Consume it!
+                                # Strip all whitespace/punctuation from the Excel cell too
+                                cleaned_cell = re.sub(r'[\s\W_]+', '', cell_text)
+                                
+                                if not cleaned_cell:
+                                    continue # Ignore cells that are purely punctuation
                                     
+                                if cleaned_cell in cleaned_mxliff_pool:
+                                    # Consume it so duplicates aren't falsely validated
+                                    cleaned_mxliff_pool.remove(cleaned_cell)
                                 else:
-                                    # 2. Segmented Check: Can we build it from available segments?
-                                    remaining_text = cell_text
-                                    segments_to_remove = []
-                                    
-                                    # Sort CURRENTLY available sources by length (longest first)
-                                    current_sorted_sources = sorted(mxliff_sources, key=len, reverse=True)
-                                    
-                                    for src in current_sorted_sources:
-                                        if src in remaining_text:
-                                            # Replace only 1 instance to respect exact counts
-                                            remaining_text = remaining_text.replace(src, '', 1)
-                                            segments_to_remove.append(src)
-                                            
-                                            # Optimization: Stop checking if we've consumed all text
-                                            if len(re.sub(r'[\s\W_]+', '', remaining_text)) == 0:
-                                                break
-                                    
-                                    cleaned_leftover = re.sub(r'[\s\W_]+', '', remaining_text)
-                                    
-                                    # If letters/numbers are still left, it's missing!
-                                    if len(cleaned_leftover) > 0:
-                                        missing_items.append({
-                                            'Cell': f"{col_letter}{row}",
-                                            'Source Text': cell_text
-                                        })
-                                    else:
-                                        # It was perfectly matched via segments! Consume those segments from the pool.
-                                        for src in segments_to_remove:
-                                            if src in mxliff_sources:
-                                                mxliff_sources.remove(src)
+                                    # It's genuinely missing!
+                                    missing_items.append({
+                                        'Cell': f"{col_letter}{row}",
+                                        'Source Text': cell_text
+                                    })
 
                 # ==========================================================
                 # CSV OUTPUT, PREVIEW & DOWNLOAD LOGIC
