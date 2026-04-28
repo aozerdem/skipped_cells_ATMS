@@ -14,7 +14,7 @@ st.set_page_config(page_title="Missing Strings Report", page_icon="🔍")
 st.markdown(
     """
     <div style='text-align: right; color: gray; font-size: 14px; margin-bottom: -20px;'>
-        <i>developed by AO for Acclaro</i>
+        <i>please contact Ahmet Ozerdem for any issues</i>
     </div>
     """, 
     unsafe_allow_html=True
