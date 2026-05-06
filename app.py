@@ -81,7 +81,7 @@ if xlsx_file and mxliff_file:
                         if len(texts) == 1:
                             normal_mxliff_pool.append(cleaned)
                         else:
-                            split_mxliff_pool.append(cleaned) # It took multiple segments to build this
+                            split_mxliff_pool.append(cleaned)
 
                 # Parse the source XLSX file
                 wb = openpyxl.load_workbook(xlsx_path, data_only=True)
@@ -113,7 +113,7 @@ if xlsx_file and mxliff_file:
                                     split_mxliff_pool.remove(cleaned_cell)
                                     report_items.append({
                                         'Cell': f"{col_letter}{row}",
-                                        'Status': '🟡 Split String',
+                                        'Status': 'Split String',
                                         'Source Text': cell_text
                                     })
                                     
@@ -121,15 +121,15 @@ if xlsx_file and mxliff_file:
                                 else:
                                     report_items.append({
                                         'Cell': f"{col_letter}{row}",
-                                        'Status': '🔴 Missing Cell',
+                                        'Status': 'Missing Cell',
                                         'Source Text': cell_text
                                     })
 
                 # ==========================================================
                 # CSV OUTPUT, PREVIEW & DOWNLOAD LOGIC
                 # ==========================================================
-                missing_only = [item for item in report_items if item['Status'] == '🔴 Missing Cell']
-                split_only = [item for item in report_items if item['Status'] == '🟡 Split String']
+                missing_only = [item for item in report_items if item['Status'] == 'Missing Cell']
+                split_only = [item for item in report_items if item['Status'] == 'Split String']
                 
                 if not report_items:
                     st.success("✅ No hidden strings or segmentation issues found! Everything looks perfect.")
@@ -137,24 +137,14 @@ if xlsx_file and mxliff_file:
                     # Metrics Dashboard
                     st.markdown("### 📊 Scan Results")
                     metric_col1, metric_col2 = st.columns(2)
-                    metric_col1.metric("🔴 Completely Missing Cells", len(missing_only))
-                    metric_col2.metric("🟡 Improperly Split Strings", len(split_only))
+                    metric_col1.metric("Completely Missing Cells", len(missing_only))
+                    metric_col2.metric("Improperly Split Strings", len(split_only))
                     
                     st.divider()
                     
-                    # UI Tabs for clean preview
-                    tab1, tab2 = st.tabs(["🔴 Missing Cells", "🟡 Split Strings"])
-                    with tab1:
-                        if missing_only:
-                            st.dataframe(missing_only, use_container_width=True)
-                        else:
-                            st.info("No completely missing cells found.")
-                            
-                    with tab2:
-                        if split_only:
-                            st.dataframe(split_only, use_container_width=True)
-                        else:
-                            st.info("No split string issues found.")
+                    # UI Consolidated Preview
+                    st.markdown("### Consolidated Findings Preview")
+                    st.dataframe(report_items, use_container_width=True)
                     
                     # Dynamic File Naming
                     base_name = xlsx_file.name.replace('.xlsx', '')[:15]
